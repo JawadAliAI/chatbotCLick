@@ -1,0 +1,7 @@
+langchain==0.0.250
+langchain-huggingface
+langchain-community
+langchain-groq
+gradio
+faiss-cpu
+python-dotenv

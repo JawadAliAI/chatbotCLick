@@ -1,5 +1,5 @@
 import os
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -9,11 +9,9 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
 
-# Set up API
 app = FastAPI()
 groq_api_key = os.getenv("GROQ_API_KEY")
 
-# Load documents and initialize QA chain
 def load_and_index_pdf(pdf_path="company_data.pdf"):
     loader = PyPDFLoader(pdf_path)
     documents = loader.load()
@@ -29,7 +27,8 @@ def setup_qa():
         load_and_index_pdf()
     db = FAISS.load_local("company_faiss_index", embedding, allow_dangerous_deserialization=True)
     retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 3})
-    llm = ChatGroq(model_name="llama3-70b-8192", api_key=groq_api_key)
+    
+    llm = ChatGroq(api_key=groq_api_key, model_name="llama3-70b-8192")
 
     prompt = PromptTemplate.from_template("""
 You are a helpful assistant for a digital marketing company.
@@ -47,18 +46,17 @@ Question:
         llm=llm,
         retriever=retriever,
         return_source_documents=False,
+        chain_type="stuff",
         chain_type_kwargs={"prompt": prompt}
     )
     return qa_chain
 
 qa_chain = setup_qa()
 
-# Input format
 class QueryRequest(BaseModel):
     query: str
 
-# Endpoint
 @app.post("/api/chat")
 async def chat(req: QueryRequest):
-    result = qa_chain.invoke(req.query)
-    return {"response": result['result']}
+    answer = qa_chain.run(req.query)
+    return {"response": answer}

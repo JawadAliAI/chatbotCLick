@@ -1,3 +1,5 @@
+from fastapi import FastAPI
+from pydantic import BaseModel
 import os
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -7,9 +9,14 @@ from langchain.chains import RetrievalQA
 from langchain.chains.qa_with_sources import load_qa_chain
 from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
-import gradio as gr
 
-# Load Groq API key from environment variable
+app = FastAPI()
+
+# Define Pydantic model for request body
+class Query(BaseModel):
+    question: str
+
+# Load your Groq API key from environment
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 def load_and_index_pdf(pdf_path="company_data.pdf"):
@@ -23,14 +30,11 @@ def load_and_index_pdf(pdf_path="company_data.pdf"):
 
 def setup_qa():
     embedding = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-
-    # Load or create FAISS index
     if not os.path.exists("company_faiss_index"):
         load_and_index_pdf()
 
     db = FAISS.load_local("company_faiss_index", embedding, allow_dangerous_deserialization=True)
     retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 3})
-
     llm = ChatGroq(model_name="llama3-70b-8192", api_key=groq_api_key)
 
     prompt = PromptTemplate.from_template("""
@@ -45,7 +49,6 @@ Question:
 {question}
 """)
 
-    # Build QA chain manually to avoid Pydantic validation issues
     qa_chain = RetrievalQA(
         retriever=retriever,
         combine_documents_chain=load_qa_chain(llm, chain_type="stuff", prompt=prompt),
@@ -55,15 +58,8 @@ Question:
 
 qa_chain = setup_qa()
 
-def answer_question(query):
-    return qa_chain.run(query)
-
-# Gradio UI
-iface = gr.Interface(
-    fn=answer_question,
-    inputs=gr.Textbox(lines=2, placeholder="Ask a question about digital marketing..."),
-    outputs="text",
-    title="Click Media Lab Chatbot"
-)
-
-iface.launch(share=True)
+@app.post("/chat")
+async def chat(query: Query):
+    user_question = query.question
+    answer = qa_chain.run(user_question)
+    return {"answer": answer}

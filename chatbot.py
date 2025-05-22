@@ -66,5 +66,4 @@ iface = gr.Interface(
     title="Click Media Lab Chatbot"
 )
 
-iface.launch(share=True)
-
+launch(share=True)

@@ -1,5 +1,4 @@
 import os
-from flask import Flask, request, jsonify
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
@@ -8,9 +7,9 @@ from langchain.chains import RetrievalQA
 from langchain.chains.qa_with_sources import load_qa_chain
 from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
+import gradio as gr
 
-app = Flask(__name__)
-
+# Load Groq API key from environment variable
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 def load_and_index_pdf(pdf_path="company_data.pdf"):
@@ -25,6 +24,7 @@ def load_and_index_pdf(pdf_path="company_data.pdf"):
 def setup_qa():
     embedding = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
+    # Load or create FAISS index
     if not os.path.exists("company_faiss_index"):
         load_and_index_pdf()
 
@@ -45,6 +45,7 @@ Question:
 {question}
 """)
 
+    # Build QA chain manually to avoid Pydantic validation issues
     qa_chain = RetrievalQA(
         retriever=retriever,
         combine_documents_chain=load_qa_chain(llm, chain_type="stuff", prompt=prompt),
@@ -54,14 +55,15 @@ Question:
 
 qa_chain = setup_qa()
 
-@app.route("/chat", methods=["POST"])
-def chat():
-    data = request.json
-    user_query = data.get("query", "")
-    if not user_query:
-        return jsonify({"error": "No query provided"}), 400
-    response = qa_chain.run(user_query)
-    return jsonify({"response": response})
+def answer_question(query):
+    return qa_chain.run(query)
 
+# Gradio UI
+iface = gr.Interface(
+    fn=answer_question,
+    inputs=gr.Textbox(lines=2, placeholder="Ask a question about digital marketing..."),
+    outputs="text",
+    title="Click Media Lab Chatbot"
+)
 
-app.run(host="0.0.0.0", port=8000)
+iface.launch(share=True)
